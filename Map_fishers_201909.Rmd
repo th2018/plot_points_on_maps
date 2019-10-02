@@ -1,0 +1,144 @@
+
+#load library
+```{r}
+library(raster)
+library(sp)
+library(rgdal)
+library("foreign")
+library("ggplot2")
+require("maptools")
+require("plyr")
+```
+
+#read data
+```{r}
+fisher<-read.csv("C:/Users/huangt/Downloads/number_recreational_fishers_Tao201909.csv")
+fisher<-fisher[,c( "Country", "No..of.recreational.fishermen...."  )]
+loc<-read.csv("C:/Users/huangt/Downloads/location info for map incl lat long.csv")
+```
+
+#download, read and plot countries shp, also read the country dbf
+```{r}
+#https://www.naturalearthdata.com/downloads/50m-cultural-vectors/50m-admin-0-countries-2/
+#countries<-readOGR(dsn="C:/Users/huangt/Downloads/ne_50m_admin_0_countries/",layer="ne_50m_admin_0_countries")
+
+#another way to read shapefiles
+countries<-shapefile("C:/Users/huangt/Downloads/ne_50m_admin_0_countries/ne_50m_admin_0_countries.shp")
+
+countries_dbf<-read.dbf("C:/Users/huangt/Downloads/ne_50m_admin_0_countries/ne_50m_admin_0_countries.dbf")
+
+```
+
+#create location data
+```{r}
+head(loc)
+#increase jitter slightly so that all points are at least a little visible
+loc$y<-loc$lat+runif(length(loc$lat), min=-0.15, max=0.15)
+loc$x<-loc$long+runif(length(loc$long), min=-0.15, max=0.15)
+head(loc)
+
+loc_shp <- SpatialPointsDataFrame(loc[,c("x","y")],
+                    loc,    #the R object to convert
+                    proj4string = crs(countries))   # assign a CRS 
+plot(loc_shp)
+
+```
+
+#create the category
+```{r}
+#remove NA
+fisher_rna<-fisher[!fisher[,2]=="n/a",]
+
+#Change 0~1% to 0.5%
+fisher_rna[fisher_rna$No..of.recreational.fishermen....==">0,1" ,]$No..of.recreational.fishermen....<-0.5
+
+fisher_rna$No..of.recreational.fishermen....<-as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))
+
+fisher_rna$category<-""
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=5,]$category<-5
+table(fisher_rna$category)
+
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>5 & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=10,]$category<-10
+table(fisher_rna$category)
+
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>10 & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=15,]$category<-15
+table(fisher_rna$category)
+
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>15 & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=20,]$category<-20
+table(fisher_rna$category)
+
+#fisher_rna[ !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>20 & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=25,]$category<-25
+#table(fisher_rna$category)
+
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>25 & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))<=30,]$category<-30
+table(fisher_rna$category)
+
+fisher_rna[  !is.na(as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))) & as.numeric(as.character(fisher_rna$No..of.recreational.fishermen....))>30,]$category<-35
+table(fisher_rna$category)
+
+#merge country name with fisher data
+countries_m<-merge(countries[countries$NAME_LONG %in% fisher_rna$Country,] ,fisher_rna ,by.x= "NAME_LONG",by.y= "Country")
+
+countries_m$category<-as.factor(countries_m$category)
+
+# perhaps save as shapefile again
+shapefile(countries_m, "C:/Users/huangt/Downloads/countries_m3.shp", overwrite=TRUE )
+```
+
+#make color
+```{r}
+
+colfunc <- colorRampPalette(c("yellow","red"))
+
+
+levels(countries_m@data$category)
+ 
+ 
+color_FE3<-colfunc(length(levels((countries_m@data$category))))
+#color_FE3<-colfunc(7)
+color_FE3
+color_FE4<-c(color_FE3[-1],color_FE3[1] )
+color_FE4
+```
+
+
+#make color for legend
+```{r}
+
+colfunc2 <- colorRampPalette(c("white","red"))
+ 
+color_FE5<-colfunc2(length(levels((countries_m@data$category)))+1)
+#white
+color_FE5[1]
+```
+
+
+#plot
+```{r}
+jpeg(filename = 
+
+       "fishers.jpg"
+     ,width = 1599
+     , height = 1000
+     )
+#plot(countries_m,col=(color_FE3)[(countries_m@data$category) ])
+plot(countries[!countries$SOVEREIGNT=="Antarctica",])
+plot(countries_m,col=(color_FE4)[(countries_m@data$category) ],add=T)
+
+#plot marine points
+plot(loc_shp[loc_shp$habitat=="marine",],add=T,col="blue",pch=4,lwd=3,cex=2)
+
+
+#plot freshwater points
+plot(loc_shp[loc_shp$habitat=="freshwater",],add=T,col="green",pch="o",cex=2)
+
+# add a legend to our map
+legend(x= xmin(countries_m),y=ymin(countries_m)+30,
+#  "bottomleft", 
+     legend=c("No data","0-5","5-10","10-15","15-20","25-30","30-35"),
+       fill=c("#FFFFFF",color_FE3), 
+       bty="n", #turn off border
+       cex=2.1
+,title="Recreational fishers (%)") #adjust font size
+dev.off()
+```
